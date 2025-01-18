@@ -178,7 +178,7 @@ The server captures `SIGINT` and `SIGTERM` signals to:
 
 ## Future Improvements
 
-- Add GPU acceleration for the transformer model.
+- Add GPU acceleration for the transformer model (In Progress: Added MPS support but need to add GPU usage metrics)
 - Integrate with a production-grade serving framework (e.g., FastAPI, Flask).
 - Optimize the batching mechanism for variable-length inputs.
 - Add more robust error handling and retry logic.
