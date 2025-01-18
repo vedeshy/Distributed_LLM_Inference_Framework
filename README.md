@@ -182,4 +182,3 @@ The server captures `SIGINT` and `SIGTERM` signals to:
 - Integrate with a production-grade serving framework (e.g., FastAPI, Flask).
 - Optimize the batching mechanism for variable-length inputs.
 - Add more robust error handling and retry logic.
-```
