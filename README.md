@@ -1,4 +1,3 @@
-```markdown
 # Transformer Inference Server
 
 This project is an HTTP server for processing text using a transformer-based model. It includes:
