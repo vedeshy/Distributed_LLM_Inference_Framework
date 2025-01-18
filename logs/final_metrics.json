@@ -1,13 +1,11 @@
 {
-  "avg_latency": 3.8116531372070312,
-  "p95_latency": 3.9607837438583373,
-  "p99_latency": 3.983347086906433,
-  "min_latency": 3.661545991897583,
-  "max_latency": 3.988987922668457,
-  "current_throughput": 0.06561061200719871,
-  "avg_cpu_usage": 45.08571428571429,
-  "avg_memory_usage_mb": 496.4174107142857,
-  "total_requests": 7,
-  "failed_requests": 0,
-  "success_rate": 1.0
+  "metrics": {
+    "latency": 0.5135941505432129,
+    "throughput": 0.2042993667958001,
+    "cpu_usage": 22.7,
+    "memory_usage": 409.0625,
+    "total_requests": 1,
+    "failed_requests": 0,
+    "success_rate": 1.0
+  }
 }

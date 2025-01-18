@@ -1,0 +1,5 @@
+2025-01-18 18:28:06,574 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:28:06,871 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:28:06,871 - INFO - Initializing transformer model...
+2025-01-18 18:28:06,871 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:28:06,881 - ERROR - Failed to start server: 'TransformerModel' object has no attribute 'attention_layers'

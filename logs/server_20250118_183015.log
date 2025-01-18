@@ -1,0 +1,6 @@
+2025-01-18 18:30:15,245 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:30:15,294 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:30:15,294 - INFO - Initializing transformer model...
+2025-01-18 18:30:15,294 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:30:15,608 - INFO - Warming up GPU...
+2025-01-18 18:30:16,787 - ERROR - Failed to start server: can't convert mps:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to host memory first.

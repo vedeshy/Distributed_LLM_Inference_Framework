@@ -1,0 +1,12 @@
+2025-01-18 18:28:53,331 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:28:53,376 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:28:53,376 - INFO - Initializing transformer model...
+2025-01-18 18:28:53,377 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:28:53,769 - INFO - Warming up GPU...
+2025-01-18 18:28:53,912 - ERROR - Failed to start server: mean() received an invalid combination of arguments - got (out=NoneType, dtype=NoneType, keepdims=bool, axis=int, ), but expected one of:
+ * (*, torch.dtype dtype = None)
+ * (tuple of ints dim, bool keepdim = False, *, torch.dtype dtype = None)
+      didn't match because some of the keywords were incorrect: out, dtype, keepdims, axis
+ * (tuple of names dim, bool keepdim = False, *, torch.dtype dtype = None)
+      didn't match because some of the keywords were incorrect: out, dtype, keepdims, axis
+

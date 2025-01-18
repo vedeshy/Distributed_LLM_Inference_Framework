@@ -15,6 +15,7 @@ import sys
 from datetime import datetime
 import pickle
 import signal
+import math
 
 # Set up logging with more detailed metrics and file output
 log_dir = "logs"
@@ -57,141 +58,223 @@ class Metrics:
         self.failed_requests += 1
         
     def get_statistics(self):
-        if not self.request_times:
-            return {}
-        return {
-            'avg_latency': np.mean(self.request_times),
-            'p95_latency': np.percentile(self.request_times, 95),
-            'p99_latency': np.percentile(self.request_times, 99),
-            'min_latency': np.min(self.request_times),
-            'max_latency': np.max(self.request_times),
-            'current_throughput': self.throughput[-1] if self.throughput else 0,
-            'avg_cpu_usage': np.mean(self.cpu_usage),
-            'avg_memory_usage_mb': np.mean(self.memory_usage),
-            'total_requests': self.total_requests,
-            'failed_requests': self.failed_requests,
-            'success_rate': (self.total_requests - self.failed_requests) / self.total_requests if self.total_requests > 0 else 0
-        }
+        try:
+            return {
+                'metrics': {
+                    'latency': np.mean(self.request_times) if self.request_times else 0,
+                    'throughput': self.throughput[-1] if self.throughput else 0,
+                    'cpu_usage': np.mean(self.cpu_usage) if self.cpu_usage else 0,
+                    'memory_usage': np.mean(self.memory_usage) if self.memory_usage else 0,
+                    'total_requests': self.total_requests,
+                    'failed_requests': self.failed_requests,
+                    'success_rate': (self.total_requests - self.failed_requests) / self.total_requests if self.total_requests > 0 else 0
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting statistics: {e}")
+            return {
+                'metrics': {
+                    'latency': 0,
+                    'throughput': 0,
+                    'cpu_usage': 0,
+                    'memory_usage': 0,
+                    'total_requests': self.total_requests,
+                    'failed_requests': self.failed_requests,
+                    'success_rate': 0
+                }
+            }
 
-class MultiHeadAttention:
+class MultiHeadAttention(torch.nn.Module):
     def __init__(self, d_model, num_heads):
+        super().__init__()  # Initialize the parent class
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_k = d_model // num_heads
         
-        # Initialize weights with better scaling
-        scale = np.sqrt(2.0 / (d_model + self.d_k))
-        self.w_q = np.random.normal(0, scale, (d_model, d_model))
-        self.w_k = np.random.normal(0, scale, (d_model, d_model))
-        self.w_v = np.random.normal(0, scale, (d_model, d_model))
-        self.w_o = np.random.normal(0, scale, (d_model, d_model))
+        # Weights will be initialized in TransformerModel.__init__
+        self.w_q = None
+        self.w_k = None
+        self.w_v = None
+        self.w_o = None
         
-        # Add dropout
         self.dropout_rate = 0.1
-        
-    def split_heads(self, x):
-        batch_size = x.shape[0]
-        x = x.reshape(batch_size, -1, self.num_heads, self.d_k)
-        return x.transpose(0, 2, 1, 3)
-        
-    def scaled_dot_product_attention(self, q, k, v, mask=None):
-        matmul_qk = np.matmul(q, k.transpose(0, 1, 3, 2))
-        scale = np.sqrt(self.d_k)
-        scaled_attention_logits = matmul_qk / scale
-        
-        if mask is not None:
-            scaled_attention_logits += (mask * -1e9)
-            
-        attention_weights = np.exp(scaled_attention_logits) / np.sum(np.exp(scaled_attention_logits), axis=-1, keepdims=True)
-        
-        # Apply dropout
-        if self.dropout_rate > 0:
-            dropout_mask = np.random.binomial(1, 1-self.dropout_rate, attention_weights.shape)
-            attention_weights *= dropout_mask / (1 - self.dropout_rate)
-            
-        output = np.matmul(attention_weights, v)
-        
-        return output, attention_weights
+        self.dropout = torch.nn.Dropout(self.dropout_rate)
         
     def forward(self, q, k, v, mask=None):
-        q = np.dot(q, self.w_q)
-        k = np.dot(k, self.w_k)
-        v = np.dot(v, self.w_v)
+        # Ensure all inputs are on the same device
+        device = q.device
         
-        q = self.split_heads(q)
-        k = self.split_heads(k)
-        v = self.split_heads(v)
+        # Linear transformations
+        q = torch.matmul(q, self.w_q)
+        k = torch.matmul(k, self.w_k)
+        v = torch.matmul(v, self.w_v)
         
-        scaled_attention, attention_weights = self.scaled_dot_product_attention(q, k, v, mask)
-        scaled_attention = scaled_attention.transpose(0, 2, 1, 3).reshape(-1, self.d_model)
+        # Split heads
+        batch_size = q.shape[0]
+        q = q.view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        k = k.view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        v = v.view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
         
-        return np.dot(scaled_attention, self.w_o), attention_weights
+        # Scaled dot-product attention
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+            
+        attention_weights = torch.softmax(scores, dim=-1)
+        
+        if self.dropout_rate > 0:
+            attention_weights = self.dropout(attention_weights)
+            
+        output = torch.matmul(attention_weights, v)
+        
+        # Combine heads
+        output = output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+        
+        return torch.matmul(output, self.w_o), attention_weights
 
-class FeedForward:
+class FeedForward(torch.nn.Module):
     def __init__(self, d_model, d_ff):
+        super().__init__()
         self.d_model = d_model
         self.d_ff = d_ff
         
         # Initialize weights with better scaling
         scale = np.sqrt(2.0 / (d_model + d_ff))
-        self.w1 = np.random.normal(0, scale, (d_model, d_ff))
-        self.w2 = np.random.normal(0, scale, (d_ff, d_model))
+        self.w1 = torch.nn.Parameter(torch.randn(d_model, d_ff) * scale)
+        self.w2 = torch.nn.Parameter(torch.randn(d_ff, d_model) * scale)
         
         # Add dropout
         self.dropout_rate = 0.1
+        self.dropout = torch.nn.Dropout(self.dropout_rate)
         
     def gelu(self, x):
-        return 0.5 * x * (1 + np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3)))
+        return 0.5 * x * (1 + torch.tanh(torch.sqrt(torch.tensor(2.0 / np.pi)) * (x + 0.044715 * torch.pow(x, 3))))
         
     def forward(self, x):
-        h = np.dot(x, self.w1)
+        h = torch.matmul(x, self.w1)
         h = self.gelu(h)
         
         if self.dropout_rate > 0:
-            dropout_mask = np.random.binomial(1, 1-self.dropout_rate, h.shape)
-            h *= dropout_mask / (1 - self.dropout_rate)
+            h = self.dropout(h)
             
-        return np.dot(h, self.w2)
+        return torch.matmul(h, self.w2)
 
 class TransformerModel:
     def __init__(self, d_model=512, num_heads=8, d_ff=2048, num_layers=6):
+        # Explicitly check and set up MPS device
+        if not torch.backends.mps.is_available():
+            logger.warning("MPS not available. Check if you're using macOS 12.3+ and have an M1/M2 Mac")
+            self.device = torch.device("cpu")
+        else:
+            self.device = torch.device("mps")
+            logger.info(f"Using MPS device for GPU acceleration: {self.device}")
+
         self.d_model = d_model
         self.num_layers = num_layers
         
+        # Convert all model parameters to torch tensors and move to GPU
+        self.to_gpu = lambda x: torch.tensor(x, dtype=torch.float32, device=self.device)
+        
+        # Initialize attention and feed forward layers first
         self.attention_layers = [MultiHeadAttention(d_model, num_heads) for _ in range(num_layers)]
         self.ff_layers = [FeedForward(d_model, d_ff) for _ in range(num_layers)]
         
-        # Layer normalization parameters
-        self.layer_norms = [(np.ones(d_model), np.zeros(d_model)) for _ in range(num_layers * 2)]
+        # Move layers to GPU
+        for i in range(num_layers):
+            self.attention_layers[i] = self.attention_layers[i].to(self.device)
+            self.ff_layers[i] = self.ff_layers[i].to(self.device)
         
-        # Save/load methods
+        # Initialize weights directly on GPU
+        scale = np.sqrt(2.0 / (d_model + d_model // num_heads))
+        for i in range(num_layers):
+            self.attention_layers[i].w_q = self.to_gpu(np.random.normal(0, scale, (d_model, d_model)))
+            self.attention_layers[i].w_k = self.to_gpu(np.random.normal(0, scale, (d_model, d_model)))
+            self.attention_layers[i].w_v = self.to_gpu(np.random.normal(0, scale, (d_model, d_model)))
+            self.attention_layers[i].w_o = self.to_gpu(np.random.normal(0, scale, (d_model, d_model)))
+            
+        # Initialize layer normalization parameters
+        self.layer_norms = [(
+            torch.ones(d_model, device=self.device),
+            torch.zeros(d_model, device=self.device)
+        ) for _ in range(num_layers * 2)]
+            
+        # Warm up the GPU
+        self._warmup()
+        
+        # Create model directory if it doesn't exist
         self.model_dir = "saved_models"
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
-            
+        
+    def _warmup(self):
+        """Warm up the GPU with a dummy forward pass"""
+        logger.info("Warming up GPU...")
+        # Create dummy input with correct dimensions [batch_size, seq_length, d_model]
+        dummy_input = torch.randn(1, self.d_model, self.d_model, device=self.device)
+        # Create dummy mask with correct dimensions [batch_size, seq_length, seq_length]
+        dummy_mask = torch.ones(1, self.d_model, self.d_model, device=self.device)
+        
+        with torch.no_grad():
+            for _ in range(3):
+                self.forward(dummy_input, dummy_mask)
+        logger.info("GPU warmup complete")
+        
     def layer_norm(self, x, g, b, eps=1e-5):
-        mean = np.mean(x, axis=-1, keepdims=True)
-        variance = np.var(x, axis=-1, keepdims=True)
-        return g * (x - mean) / np.sqrt(variance + eps) + b
+        # Ensure input is a torch tensor
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x, dtype=torch.float32, device=self.device)
+        
+        # Use PyTorch's mean and var operations
+        mean = x.mean(dim=-1, keepdim=True)
+        variance = x.var(dim=-1, keepdim=True, unbiased=False)
+        
+        # Ensure g and b are on the same device as x
+        g = g.to(self.device)
+        b = b.to(self.device)
+        
+        return g * (x - mean) / torch.sqrt(variance + eps) + b
         
     def forward(self, x, mask=None, return_attention=False):
-        attention_maps = []
+        # Ensure input is on GPU and has correct shape
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x, dtype=torch.float32)
+        x = x.to(self.device)
         
-        for i in range(self.num_layers):
-            # Multi-head attention
-            norm_x = self.layer_norm(x, *self.layer_norms[i*2])
-            attention_output, attention_weights = self.attention_layers[i].forward(norm_x, norm_x, norm_x, mask)
-            attention_maps.append(attention_weights)
-            x = x + attention_output
+        # Ensure x has shape [batch_size, seq_length, d_model]
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)  # Add batch dimension if missing
             
-            # Feed forward
-            norm_x = self.layer_norm(x, *self.layer_norms[i*2+1])
-            ff_output = self.ff_layers[i].forward(norm_x)
-            x = x + ff_output
+        if mask is not None:
+            if not isinstance(mask, torch.Tensor):
+                mask = torch.tensor(mask, dtype=torch.float32)
+            mask = mask.to(self.device)
+            # Ensure mask has shape [batch_size, seq_length, seq_length]
+            if len(mask.shape) == 2:
+                mask = mask.unsqueeze(0)
+                
+        with torch.no_grad():
+            attention_maps = []
             
-        if return_attention:
-            return x, attention_maps
-        return x
+            for i in range(self.num_layers):
+                # Multi-head attention
+                norm_x = self.layer_norm(x, *self.layer_norms[i*2])
+                attention_output, attention_weights = self.attention_layers[i].forward(norm_x, norm_x, norm_x, mask)
+                attention_maps.append(attention_weights)
+                x = x + attention_output
+                
+                # Feed forward
+                norm_x = self.layer_norm(x, *self.layer_norms[i*2+1])
+                ff_output = self.ff_layers[i].forward(norm_x)
+                x = x + ff_output
+            
+            # Move results back to CPU only at the end
+            x = x.cpu().numpy()
+            attention_maps = [att.cpu().numpy() for att in attention_maps]
+            
+            if return_attention:
+                return x, attention_maps
+            return x
         
     def save(self, filename):
         path = os.path.join(self.model_dir, filename)
@@ -426,8 +509,23 @@ class InferenceServer(BaseHTTPRequestHandler):
 
 def main():
     try:
+        # Verify GPU availability
+        if torch.backends.mps.is_available():
+            logger.info("MPS (Metal Performance Shaders) is available for GPU acceleration")
+            # Test GPU with a small tensor
+            test_tensor = torch.randn(2, 2, device="mps")
+            logger.info(f"Test tensor created on GPU: {test_tensor.device}")
+        else:
+            logger.warning("MPS not available, falling back to CPU. Requirements:")
+            logger.warning("- macOS 12.3 or later")
+            logger.warning("- M1/M2 Mac or compatible GPU")
+            logger.warning("- PyTorch installed with MPS support")
+            
         logger.info("Initializing transformer model...")
         model = TransformerModel()
+        
+        # Log device placement
+        logger.info(f"Model initialized on device: {model.device}")
         
         # Try to load saved model if exists
         if os.path.exists(os.path.join(model.model_dir, 'latest.pkl')):

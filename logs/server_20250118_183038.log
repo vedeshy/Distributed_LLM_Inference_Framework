@@ -1,0 +1,6 @@
+2025-01-18 18:30:38,937 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:30:38,984 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:30:38,984 - INFO - Initializing transformer model...
+2025-01-18 18:30:38,984 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:30:39,271 - INFO - Warming up GPU...
+2025-01-18 18:30:39,373 - ERROR - Failed to start server: Tensor for argument #2 'mat2' is on CPU, but expected it to be on GPU (while checking arguments for mm)

@@ -1,0 +1,6 @@
+2025-01-18 18:29:21,334 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:29:21,378 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:29:21,378 - INFO - Initializing transformer model...
+2025-01-18 18:29:21,378 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:29:21,690 - INFO - Warming up GPU...
+2025-01-18 18:29:23,400 - ERROR - Failed to start server: 'MultiHeadAttention' object has no attribute 'training'

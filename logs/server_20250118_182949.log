@@ -1,0 +1,6 @@
+2025-01-18 18:29:49,075 - INFO - MPS (Metal Performance Shaders) is available for GPU acceleration
+2025-01-18 18:29:49,117 - INFO - Test tensor created on GPU: mps:0
+2025-01-18 18:29:49,117 - INFO - Initializing transformer model...
+2025-01-18 18:29:49,117 - INFO - Using MPS device for GPU acceleration: mps
+2025-01-18 18:29:49,435 - INFO - Warming up GPU...
+2025-01-18 18:29:49,729 - ERROR - Failed to start server: Expected size for first two dimensions of batch2 tensor to be: [8, 512] but got: [8, 1].
